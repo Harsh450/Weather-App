@@ -1,37 +1,23 @@
 package com.example.weatherapp.fragment
 
 
-import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
-import android.content.Intent
-import android.content.pm.PackageManager
-import android.location.Location
-import android.location.LocationManager
 import android.os.Build
 import android.os.Bundle
-import android.provider.Settings
 import android.view.*
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
-import android.widget.Toast
 import androidx.annotation.RequiresApi
-import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.databinding.DataBindingUtil
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.ViewModelProvider
 import com.example.weatherapp.R
-import com.example.weatherapp.apiservice.ApiCall
 import com.example.weatherapp.databinding.FragmentWeatherDashboardBinding
 import com.example.weatherapp.factory.WeatherViewModelFactory
 import com.example.weatherapp.model.ModelClass
 import com.example.weatherapp.viewmodel.WeatherViewModel
-import com.google.android.gms.location.FusedLocationProviderClient
-import com.google.android.gms.location.LocationServices
-import retrofit2.Call
-import retrofit2.Callback
-import retrofit2.Response
 import java.math.RoundingMode
 import java.text.SimpleDateFormat
 import java.time.Instant
@@ -42,7 +28,6 @@ import java.util.*
 @Suppress("DEPRECATION")
 class WeatherDashboard : Fragment() {
 
-    private lateinit var fusedLocationProviderClient: FusedLocationProviderClient
     private lateinit var fragmentMainBinding: FragmentWeatherDashboardBinding
     private lateinit var weatherViewModel: WeatherViewModel
 
@@ -51,11 +36,6 @@ class WeatherDashboard : Fragment() {
         val factory = WeatherViewModelFactory()
         weatherViewModel =
             ViewModelProvider(requireActivity(), factory).get(WeatherViewModel::class.java)
-        fusedLocationProviderClient =
-            LocationServices.getFusedLocationProviderClient(requireActivity())
-
-        getCurrentLocation()
-
 
     }
 
@@ -65,16 +45,11 @@ class WeatherDashboard : Fragment() {
         savedInstanceState: Bundle?
     ): View {
         // Inflate the layout for this fragment
-        // activityMainBinding.DataBindingUtil.setContentView(requireActivity(),R.layout.fragment_weather_dashboard)
         fragmentMainBinding = DataBindingUtil.inflate(
-            inflater, com.example.weatherapp.R.layout.fragment_weather_dashboard, container, false
+            inflater, R.layout.fragment_weather_dashboard, container, false
         )
-
         val view: View = fragmentMainBinding.root
-
-
         return view
-
     }
 
     @RequiresApi(Build.VERSION_CODES.O)
@@ -94,9 +69,12 @@ class WeatherDashboard : Fragment() {
                 true
             } else false
         }
+
+
         weatherViewModel.data.observe(requireActivity()) {
             setDataOnViews(it)
         }
+
     }
 
     @RequiresApi(Build.VERSION_CODES.O)
@@ -105,53 +83,6 @@ class WeatherDashboard : Fragment() {
         weatherViewModel.getCityWeatherData(cityName, API_KEY)
     }
 
-    private fun getCurrentLocation() {
-        if (checkPermissions()) {
-            if (isLocationEnabled()) {
-                //final latitude and longitude code here
-                if (ActivityCompat.checkSelfPermission(
-                        requireActivity(),
-                        Manifest.permission.ACCESS_FINE_LOCATION
-                    ) != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(
-                        requireActivity(),
-                        Manifest.permission.ACCESS_COARSE_LOCATION
-                    ) != PackageManager.PERMISSION_GRANTED
-                ) {
-                    requestPermission()
-                    return
-                }
-                fusedLocationProviderClient.lastLocation.addOnCompleteListener(requireActivity()) { task ->
-                    val location: Location? = task.result
-                    if (location == null) {
-                        Toast.makeText(requireActivity(), "Null Received", Toast.LENGTH_SHORT)
-                            .show()
-                    } else {
-                        //fetch the weather
-                        fetchCurrentLocationWeather(
-                            location.latitude.toString(),
-                            location.longitude.toString()
-                        )
-                    }
-                }
-
-
-            } else {
-                //settings open here
-                Toast.makeText(requireActivity(), "Turn on location", Toast.LENGTH_SHORT).show()
-                val intent = Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)
-                startActivity(intent)
-
-            }
-        } else {
-            //request permission
-            requestPermission()
-        }
-    }
-
-    private fun fetchCurrentLocationWeather(latitude: String, longitude: String) {
-        fragmentMainBinding.progressbar.visibility = View.VISIBLE
-        weatherViewModel.getCurrentWeatherData(latitude,longitude)
-    }
 
     @SuppressLint("SetTextI18n", "SimpleDateFormat")
     @RequiresApi(Build.VERSION_CODES.O)
@@ -163,9 +94,9 @@ class WeatherDashboard : Fragment() {
         }
         fragmentMainBinding.tvDateAndTime.text = currentDate
         fragmentMainBinding.tvDayMaxTemp.text =
-            "Day" + kelvinToCelsius(body.main?.temp_max ?: 0.0) + "°"
+            "Day " + kelvinToCelsius(body.main?.temp_max ?: 0.0) + "°"
         fragmentMainBinding.tvDayMinTemp.text =
-            "Night" + kelvinToCelsius(body.main?.temp_min ?: 0.0) + "°"
+            "Night " + kelvinToCelsius(body.main?.temp_min ?: 0.0) + "°"
         fragmentMainBinding.tvTemp.text = "" + kelvinToCelsius(body.main?.temp ?: 0.0) + "°"
         fragmentMainBinding.tvFeelsLike.text =
             "Feels like " + kelvinToCelsius(body.main?.feels_like ?: 0.0) + "°"
@@ -173,7 +104,7 @@ class WeatherDashboard : Fragment() {
         fragmentMainBinding.tvSunrise.text = timeStampToLocalDate(body.sys?.sunrise?.toLong() ?: 0)
         fragmentMainBinding.tvSunset.text = timeStampToLocalDate(body.sys?.sunset?.toLong() ?: 0)
         fragmentMainBinding.tvPressure.text = body.main?.pressure.toString()
-        fragmentMainBinding.tvHumidity.text = body.main?.humidity.toString() + "%"
+        fragmentMainBinding.tvHumidity.text = body.main?.humidity.toString() + " %"
         fragmentMainBinding.tvWindSpeed.text = body.wind?.speed.toString() + "m/s"
 
         fragmentMainBinding.tvTempFarenhite.text =
@@ -185,6 +116,7 @@ class WeatherDashboard : Fragment() {
     }
 
     private fun updateUI(id: Int) {
+        fragmentMainBinding.progressbar.visibility = View.VISIBLE
         val window: Window = requireActivity().window
         if (id in 200..232) {
             window.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
@@ -298,61 +230,9 @@ class WeatherDashboard : Fragment() {
         return intTemp.toBigDecimal().setScale(1, RoundingMode.UP).toDouble()
     }
 
-    private fun isLocationEnabled(): Boolean {
-        val locationManager: LocationManager =
-            requireActivity().getSystemService(Context.LOCATION_SERVICE) as LocationManager
-        return locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER) || locationManager.isProviderEnabled(
-            (LocationManager.NETWORK_PROVIDER)
-        )
-    }
-
 
     companion object {
-        const val PERMISSION_REQUEST_ACCESS_LOCATION = 100
         const val API_KEY = "dab3af44de7d24ae7ff86549334e45bd"
-    }
-
-    private fun checkPermissions(): Boolean {
-        if (ActivityCompat.checkSelfPermission(
-                requireActivity(),
-                Manifest.permission.ACCESS_COARSE_LOCATION
-            ) == PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(
-                requireActivity(),
-                android.Manifest.permission.ACCESS_FINE_LOCATION
-            ) == PackageManager.PERMISSION_GRANTED
-        ) {
-            return true
-        }
-        return false
-    }
-
-    private fun requestPermission() {
-        ActivityCompat.requestPermissions(
-            requireActivity(), arrayOf(
-                Manifest.permission.ACCESS_COARSE_LOCATION,
-                Manifest.permission.ACCESS_FINE_LOCATION
-            ),
-            PERMISSION_REQUEST_ACCESS_LOCATION
-        )
-    }
-
-    override fun onRequestPermissionsResult(
-        requestCode: Int,
-        permissions: Array<out String>,
-        grantResults: IntArray
-    ) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-
-        if (requestCode == PERMISSION_REQUEST_ACCESS_LOCATION) {
-            if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                getCurrentLocation()
-                Toast.makeText(requireActivity().applicationContext, "Granted", Toast.LENGTH_SHORT)
-                    .show()
-            } else {
-                Toast.makeText(requireActivity().applicationContext, "Denied", Toast.LENGTH_SHORT)
-                    .show()
-            }
-        }
     }
 
 
