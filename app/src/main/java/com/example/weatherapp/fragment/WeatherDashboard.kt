@@ -20,10 +20,13 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.databinding.DataBindingUtil
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.ViewModelProvider
 import com.example.weatherapp.R
 import com.example.weatherapp.apiservice.ApiCall
 import com.example.weatherapp.databinding.FragmentWeatherDashboardBinding
+import com.example.weatherapp.factory.WeatherViewModelFactory
 import com.example.weatherapp.model.ModelClass
+import com.example.weatherapp.viewmodel.WeatherViewModel
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationServices
 import retrofit2.Call
@@ -41,9 +44,13 @@ class WeatherDashboard : Fragment() {
 
     private lateinit var fusedLocationProviderClient: FusedLocationProviderClient
     private lateinit var fragmentMainBinding: FragmentWeatherDashboardBinding
+    private lateinit var weatherViewModel: WeatherViewModel
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val factory = WeatherViewModelFactory()
+        weatherViewModel =
+            ViewModelProvider(requireActivity(), factory).get(WeatherViewModel::class.java)
         fusedLocationProviderClient =
             LocationServices.getFusedLocationProviderClient(requireActivity())
 
@@ -70,10 +77,11 @@ class WeatherDashboard : Fragment() {
 
     }
 
+    @RequiresApi(Build.VERSION_CODES.O)
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         fragmentMainBinding.rlMainLayout.visibility = View.GONE
-        fragmentMainBinding.etGetCityName.setOnEditorActionListener({ v, actionId, keyEvent ->
+        fragmentMainBinding.etGetCityName.setOnEditorActionListener { v, actionId, keyEvent ->
             if (actionId == EditorInfo.IME_ACTION_SEARCH) {
                 getCityWeather(fragmentMainBinding.etGetCityName.text.toString())
                 val view = requireActivity().currentFocus
@@ -85,29 +93,16 @@ class WeatherDashboard : Fragment() {
                 }
                 true
             } else false
-        })
-
+        }
+        weatherViewModel.data.observe(requireActivity()) {
+            setDataOnViews(it)
+        }
     }
 
+    @RequiresApi(Build.VERSION_CODES.O)
     private fun getCityWeather(cityName: String) {
         fragmentMainBinding.progressbar.visibility = View.VISIBLE
-        ApiCall.getApiInterface()?.getCityWeatherData(cityName, API_KEY)
-            ?.enqueue(object : Callback<ModelClass> {
-                @RequiresApi(Build.VERSION_CODES.O)
-                override fun onResponse(call: Call<ModelClass>, response: Response<ModelClass>) {
-                    setDataOnViews(response.body())
-                }
-
-                override fun onFailure(call: Call<ModelClass>, t: Throwable) {
-                    Toast.makeText(
-                        requireActivity().applicationContext,
-                        "Not a Valid City Name",
-                        Toast.LENGTH_SHORT
-                    )
-                        .show()
-                }
-
-            })
+        weatherViewModel.getCityWeatherData(cityName, API_KEY)
     }
 
     private fun getCurrentLocation() {
@@ -150,46 +145,17 @@ class WeatherDashboard : Fragment() {
         } else {
             //request permission
             requestPermission()
-//            fusedLocationProviderClient.lastLocation.addOnCompleteListener(requireActivity()) { task ->
-//                val location: Location? = task.result
-//                    //fetch the weather
-//                    fetchCurrentLocationWeather(
-//                        location?.latitude.toString(),
-//                        location?.longitude.toString()
-//                    )
-//
-//            }
-
         }
     }
 
     private fun fetchCurrentLocationWeather(latitude: String, longitude: String) {
         fragmentMainBinding.progressbar.visibility = View.VISIBLE
-        ApiCall.getApiInterface()?.getCurrentWeatherData(latitude, longitude, API_KEY)
-            ?.enqueue(object : Callback<ModelClass> {
-                @RequiresApi(Build.VERSION_CODES.O)
-                override fun onResponse(call: Call<ModelClass>, response: Response<ModelClass>) {
-                    if (response.isSuccessful) {
-                        setDataOnViews(response.body())
-                    }
-                }
-
-                override fun onFailure(call: Call<ModelClass>, t: Throwable) {
-                    Toast.makeText(
-                        requireActivity().applicationContext,
-                        "ERROR",
-                        Toast.LENGTH_SHORT
-                    )
-                        .show()
-                }
-
-            })
-
+        weatherViewModel.getCurrentWeatherData(latitude,longitude)
     }
 
     @SuppressLint("SetTextI18n", "SimpleDateFormat")
     @RequiresApi(Build.VERSION_CODES.O)
-    private fun setDataOnViews(body: ModelClass?) {
+    fun setDataOnViews(body: ModelClass?) {
         val sdf = SimpleDateFormat("dd/MM/yyyy hh:mm")
         val currentDate = sdf.format(Date())
         if (body == null) {
@@ -204,18 +170,17 @@ class WeatherDashboard : Fragment() {
         fragmentMainBinding.tvFeelsLike.text =
             "Feels like " + kelvinToCelsius(body.main?.feels_like ?: 0.0) + "°"
         fragmentMainBinding.tvWeatherType.text = body.weather?.get(0)?.main ?: ""
-        fragmentMainBinding.tvSunrise.text = timeStampToLocalDate(body.sys?.sunrise!!.toLong())
-        fragmentMainBinding.tvSunset.text = timeStampToLocalDate(body.sys.sunset.toLong())
+        fragmentMainBinding.tvSunrise.text = timeStampToLocalDate(body.sys?.sunrise?.toLong() ?: 0)
+        fragmentMainBinding.tvSunset.text = timeStampToLocalDate(body.sys?.sunset?.toLong() ?: 0)
         fragmentMainBinding.tvPressure.text = body.main?.pressure.toString()
         fragmentMainBinding.tvHumidity.text = body.main?.humidity.toString() + "%"
         fragmentMainBinding.tvWindSpeed.text = body.wind?.speed.toString() + "m/s"
 
         fragmentMainBinding.tvTempFarenhite.text =
-            String.format("%.2f", (kelvinToCelsius(body.main!!.temp)).times(1.8).plus(32))
+            String.format("%.2f", (kelvinToCelsius(body.main?.temp ?: 0.0)).times(1.8).plus(32))
         fragmentMainBinding.etGetCityName.setText(body.name)
 
         updateUI(body.weather?.get(0)?.id ?: 0)
-
 
     }
 
@@ -350,7 +315,7 @@ class WeatherDashboard : Fragment() {
     private fun checkPermissions(): Boolean {
         if (ActivityCompat.checkSelfPermission(
                 requireActivity(),
-                android.Manifest.permission.ACCESS_COARSE_LOCATION
+                Manifest.permission.ACCESS_COARSE_LOCATION
             ) == PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(
                 requireActivity(),
                 android.Manifest.permission.ACCESS_FINE_LOCATION
@@ -364,8 +329,8 @@ class WeatherDashboard : Fragment() {
     private fun requestPermission() {
         ActivityCompat.requestPermissions(
             requireActivity(), arrayOf(
-                android.Manifest.permission.ACCESS_COARSE_LOCATION,
-                android.Manifest.permission.ACCESS_FINE_LOCATION
+                Manifest.permission.ACCESS_COARSE_LOCATION,
+                Manifest.permission.ACCESS_FINE_LOCATION
             ),
             PERMISSION_REQUEST_ACCESS_LOCATION
         )
@@ -380,18 +345,14 @@ class WeatherDashboard : Fragment() {
 
         if (requestCode == PERMISSION_REQUEST_ACCESS_LOCATION) {
             if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                getCurrentLocation()
                 Toast.makeText(requireActivity().applicationContext, "Granted", Toast.LENGTH_SHORT)
                     .show()
-                getCurrentLocation()
             } else {
                 Toast.makeText(requireActivity().applicationContext, "Denied", Toast.LENGTH_SHORT)
                     .show()
             }
         }
-    }
-
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
     }
 
 

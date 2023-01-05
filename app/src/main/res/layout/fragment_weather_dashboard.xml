@@ -157,7 +157,7 @@
                                 android:layout_weight="1"
                                 android:text="@string/main_temp"
                                 android:textColor="@color/white"
-                                android:textSize="@dimen/text_super_large">
+                                android:textSize="60sp">
 
                             </TextView>
 

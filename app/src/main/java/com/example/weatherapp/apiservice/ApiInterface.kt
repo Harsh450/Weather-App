@@ -8,16 +8,16 @@ import retrofit2.http.Query
 interface ApiInterface {
 
     @GET("weather")
-    fun getCurrentWeatherData(
+    suspend fun getCurrentWeatherData(
         @Query("lat") latitude: String,
         @Query("lon") longitude: String,
         @Query("APPID") api_key: String,
-    ) : Call<ModelClass>
+    ) : ModelClass
 
 
     @GET("weather")
-    fun getCityWeatherData(
+    suspend fun getCityWeatherData(
         @Query("q") cityName: String,
         @Query("APPID") api_key: String,
-    ) : Call<ModelClass>
+    ) : ModelClass
 }
