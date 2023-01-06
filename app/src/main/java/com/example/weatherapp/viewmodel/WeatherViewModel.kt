@@ -13,6 +13,13 @@ class WeatherViewModel : ViewModel() {
     var data: MutableLiveData<ModelClass?> = MutableLiveData(defaultCity)
     var repository: WeatherRepository = WeatherRepository()
 
+    fun getCurrentWeatherData(latitude: String, longitude: String) {
+        viewModelScope.launch {
+            val weatherData = repository.getCurrentWeatherData(latitude, longitude)
+            data.value = weatherData
+        }
+    }
+
     fun getCityWeatherData(cityName: String, api_key: String) {
         viewModelScope.launch {
            val cityWeatherData = repository.getCityWeatherData(cityName, api_key)

@@ -7,6 +7,10 @@ import com.example.weatherapp.model.ModelClass
 
 class WeatherRepository {
 
+    suspend fun getCurrentWeatherData(latitude: String, longitude: String): ModelClass? {
+        return ApiCall.getApiInterface()?.getCurrentWeatherData(latitude, longitude, API_KEY)
+    }
+
     suspend fun getCityWeatherData(
         cityName: String,
         api_key: String,
