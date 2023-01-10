@@ -5,11 +5,16 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
+import android.content.SharedPreferences
 import android.content.pm.PackageManager
-import android.location.Location
+import android.location.LocationManager
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.os.Build
 import android.os.Bundle
+import android.os.Looper
 import android.provider.Settings
+import android.util.Log
 import android.view.*
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
@@ -20,13 +25,17 @@ import androidx.core.content.ContextCompat
 import androidx.databinding.DataBindingUtil
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.ViewModelProvider
+import androidx.preference.PreferenceManager
 import com.example.weatherapp.R
 import com.example.weatherapp.databinding.FragmentWeatherDashboardBinding
 import com.example.weatherapp.factory.WeatherViewModelFactory
-import com.example.weatherapp.model.ModelClass
+import com.example.weatherapp.model.AllDataModelClass
 import com.example.weatherapp.viewmodel.WeatherViewModel
 import com.google.android.gms.location.FusedLocationProviderClient
+import com.google.android.gms.location.LocationCallback
+import com.google.android.gms.location.LocationResult
 import com.google.android.gms.location.LocationServices
+import com.google.gson.Gson
 import java.math.RoundingMode
 import java.text.SimpleDateFormat
 import java.time.Instant
@@ -50,11 +59,7 @@ class WeatherDashboard : Fragment() {
         weatherViewModel =
             ViewModelProvider(requireActivity(), factory).get(WeatherViewModel::class.java)
 
-
-        getCurrentLocation()
-
     }
-
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?,
@@ -85,16 +90,46 @@ class WeatherDashboard : Fragment() {
                 true
             } else false
         }
-
+        if (checkForInternet(requireActivity())) {
+            getCurrentLocation()
+        } else {
+            getFromSharedPreference()
+        }
 
         weatherViewModel.data.observe(requireActivity()) {
             setDataOnViews(it)
+            it?.let { it1 -> storeInSharedPreferences(it1) }
         }
 
     }
 
+    @SuppressLint("ServiceCast")
+    private fun checkForInternet(context: Context): Boolean {
 
-    private fun getCurrentLocation() {
+        val connectivityManager =
+            context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+
+            val network = connectivityManager.activeNetwork ?: return false
+
+            val activeNetwork = connectivityManager.getNetworkCapabilities(network) ?: return false
+
+            return when {
+                activeNetwork.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> true
+                activeNetwork.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> true
+                else -> false
+            }
+        } else {
+            // if the android version is below M
+            @Suppress("DEPRECATION") val networkInfo =
+                connectivityManager.activeNetworkInfo ?: return false
+            @Suppress("DEPRECATION")
+            return networkInfo.isConnected
+        }
+    }
+
+
+    fun getCurrentLocation() {
         if (checkPermissions()) {
             if (isLocationEnabled()) {
                 //final latitude and longitude code here
@@ -109,26 +144,24 @@ class WeatherDashboard : Fragment() {
                     requestPermission()
                     return
                 }
-                fusedLocationProviderClient.lastLocation.addOnCompleteListener(requireActivity()) { task ->
-                    val location: Location? = task.result
-                    if (location == null) {
-                        Toast.makeText(requireActivity(), "Null Received", Toast.LENGTH_SHORT)
-                            .show()
-                    } else {
-                        //fetch the weather
-                        fetchCurrentLocationWeather(
-                            location.latitude.toString(),
-                            location.longitude.toString()
-                        )
-                    }
-                }
+
+                val LocationRequest = com.google.android.gms.location.LocationRequest()
+                LocationRequest.interval = 5
+                LocationRequest.fastestInterval = 0
+                LocationRequest.numUpdates = 1
+
+                fusedLocationProviderClient.requestLocationUpdates(
+                    LocationRequest, LocationCallback,
+                    Looper.myLooper()
+                )
 
 
             } else {
                 //settings open here
                 Toast.makeText(requireActivity(), "Turn on location", Toast.LENGTH_SHORT).show()
                 val intent = Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)
-                startActivity(intent)
+                startActivityForResult(intent, LOCATION_ENABLED)
+
 
             }
         } else {
@@ -137,6 +170,55 @@ class WeatherDashboard : Fragment() {
         }
     }
 
+    private fun getFromSharedPreference() {
+        val sharedPreferences =
+            PreferenceManager.getDefaultSharedPreferences(requireActivity().applicationContext)
+        val gson = Gson()
+        val json: String = sharedPreferences.getString(PREF_KEY_LAST_LOCATION, "").toString()
+
+        val obj: AllDataModelClass = gson.fromJson(json, AllDataModelClass::class.java)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            weatherViewModel.data.value = obj
+        }
+    }
+
+    @SuppressLint("CommitPrefEdits")
+    private fun storeInSharedPreferences(lastLocation: AllDataModelClass) {
+        val gson = Gson()
+        val json = gson.toJson(lastLocation)
+        val sharedPreferences =
+            PreferenceManager.getDefaultSharedPreferences(requireActivity().applicationContext)
+        val editor: SharedPreferences.Editor = sharedPreferences.edit()
+        editor.putString(PREF_KEY_LAST_LOCATION, json)
+        editor.apply()
+
+    }
+
+    private val LocationCallback: LocationCallback = object : LocationCallback() {
+        override fun onLocationResult(locationResult: LocationResult) {
+            val LastLocation = locationResult.lastLocation
+            if (LastLocation == null) {
+                Toast.makeText(requireActivity(), "Null Received", Toast.LENGTH_SHORT)
+                    .show()
+            } else {
+                //fetch the weather
+                fetchCurrentLocationWeather(
+                    LastLocation.latitude.toString(),
+                    LastLocation.longitude.toString(),
+                )
+            }
+
+        }
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        if (requestCode == LOCATION_ENABLED) {
+            Log.d("location", "location enabled")
+            getCurrentLocation()
+        }
+        super.onActivityResult(requestCode, resultCode, data)
+    }
 
     private fun checkPermissions(): Boolean {
         if (ActivityCompat.checkSelfPermission(
@@ -144,7 +226,7 @@ class WeatherDashboard : Fragment() {
                 Manifest.permission.ACCESS_COARSE_LOCATION
             ) == PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(
                 requireActivity(),
-                android.Manifest.permission.ACCESS_FINE_LOCATION
+                Manifest.permission.ACCESS_FINE_LOCATION
             ) == PackageManager.PERMISSION_GRANTED
         ) {
             return true
@@ -162,29 +244,18 @@ class WeatherDashboard : Fragment() {
         )
     }
 
-    override fun onRequestPermissionsResult(
-        requestCode: Int,
-        permissions: Array<out String>,
-        grantResults: IntArray
-    ) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-
-        if (requestCode == PERMISSION_REQUEST_ACCESS_LOCATION) {
-            if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                getCurrentLocation()
-                Toast.makeText(requireActivity().applicationContext, "Granted", Toast.LENGTH_SHORT)
-                    .show()
-            } else {
-                Toast.makeText(requireActivity().applicationContext, "Denied", Toast.LENGTH_SHORT)
-                    .show()
-            }
-        }
+    private fun isLocationEnabled(): Boolean {
+        val locationManager: LocationManager =
+            requireActivity().getSystemService(Context.LOCATION_SERVICE) as LocationManager
+        return locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER) || locationManager.isProviderEnabled(
+            (LocationManager.NETWORK_PROVIDER)
+        )
     }
 
 
     private fun fetchCurrentLocationWeather(latitude: String, longitude: String) {
         fragmentMainBinding.progressbar.visibility = View.VISIBLE
-        weatherViewModel.getCurrentWeatherData(latitude,longitude)
+        weatherViewModel.getCurrentWeatherData(latitude, longitude)
     }
 
     @RequiresApi(Build.VERSION_CODES.O)
@@ -196,7 +267,7 @@ class WeatherDashboard : Fragment() {
 
     @SuppressLint("SetTextI18n", "SimpleDateFormat")
     @RequiresApi(Build.VERSION_CODES.O)
-    fun setDataOnViews(body: ModelClass?) {
+    fun setDataOnViews(body: AllDataModelClass?) {
         val sdf = SimpleDateFormat("dd/MM/yyyy hh:mm")
         val currentDate = sdf.format(Date())
         if (body == null) {
@@ -204,25 +275,50 @@ class WeatherDashboard : Fragment() {
         }
         fragmentMainBinding.tvDateAndTime.text = currentDate
         fragmentMainBinding.tvDayMaxTemp.text =
-            "Day " + kelvinToCelsius(body.main?.temp_max ?: 0.0) + "°"
+            "Day " + getTemp(body.mainData?.temp_max)
         fragmentMainBinding.tvDayMinTemp.text =
-            "Night " + kelvinToCelsius(body.main?.temp_min ?: 0.0) + "°"
-        fragmentMainBinding.tvTemp.text = "" + kelvinToCelsius(body.main?.temp ?: 0.0) + "°"
+            "Night " + getTemp(body.mainData?.temp_min)
+        fragmentMainBinding.tvTemp.text = "" + getTemp(body.mainData?.temp)
         fragmentMainBinding.tvFeelsLike.text =
-            "Feels like " + kelvinToCelsius(body.main?.feels_like ?: 0.0) + "°"
-        fragmentMainBinding.tvWeatherType.text = body.weather?.get(0)?.main ?: ""
-        fragmentMainBinding.tvSunrise.text = timeStampToLocalDate(body.sys?.sunrise?.toLong() ?: 0)
-        fragmentMainBinding.tvSunset.text = timeStampToLocalDate(body.sys?.sunset?.toLong() ?: 0)
-        fragmentMainBinding.tvPressure.text = body.main?.pressure.toString()
-        fragmentMainBinding.tvHumidity.text = body.main?.humidity.toString() + " %"
-        fragmentMainBinding.tvWindSpeed.text = body.wind?.speed.toString() + "m/s"
+            "Feels like " + getTemp(body.mainData?.feels_like)
+        fragmentMainBinding.tvWeatherType.text = body.weatherData?.get(0)?.main ?: "--"
+        fragmentMainBinding.tvSunrise.text = getSunTime(body.systemData?.sunrise?.toLong())
+        fragmentMainBinding.tvSunset.text = getSunTime(body.systemData?.sunset?.toLong())
+        fragmentMainBinding.tvPressure.text = (body.mainData?.pressure ?: "--").toString()
+        fragmentMainBinding.tvHumidity.text = (body.mainData?.humidity ?: "--").toString() + " %"
+        fragmentMainBinding.tvWindSpeed.text = (body.windData?.speed ?: "--").toString() + " m/s"
 
-        fragmentMainBinding.tvTempFarenhite.text =
-            String.format("%.2f", (kelvinToCelsius(body.main?.temp ?: 0.0)).times(1.8).plus(32))
+        fragmentMainBinding.tvTempFarenhite.text = getTempFernhite(body.mainData?.temp)
         fragmentMainBinding.etGetCityName.setText(body.name)
 
-        updateUI(body.weather?.get(0)?.id ?: 0)
+        updateUI(body.weatherData?.get(0)?.id ?: 0)
 
+    }
+
+    private fun getTemp(temp: Double?): String {
+        if (temp == null) {
+            return "--"
+        }
+        return "${kelvinToCelsius(temp)}°"
+    }
+
+    private fun getTempFernhite(Fernhite: Double?): String {
+        if (Fernhite == null) {
+            return "--"
+        }
+        return "${String.format("%.2f", (kelvinToCelsius(Fernhite)).times(1.8).plus(32))}°"
+    }
+
+    @RequiresApi(Build.VERSION_CODES.O)
+    private fun getSunTime(Sun: Long?): String {
+        if (Sun == null) {
+            return "--"
+        }
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            "${timeStampToLocalDate(Sun.toLong())}"
+        } else {
+            return "--"
+        }
     }
 
     private fun updateUI(id: Int) {
@@ -343,6 +439,9 @@ class WeatherDashboard : Fragment() {
 
     companion object {
         const val API_KEY = "dab3af44de7d24ae7ff86549334e45bd"
+        const val PERMISSION_REQUEST_ACCESS_LOCATION = 100
+        const val LOCATION_ENABLED = 101
+        const val PREF_KEY_LAST_LOCATION = "LastLocation"
     }
 
 
