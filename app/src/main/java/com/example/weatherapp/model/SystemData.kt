@@ -2,7 +2,7 @@ package com.example.weatherapp.model
 
 import com.google.gson.annotations.SerializedName
 
-data class Sys(
+data class SystemData(
     @SerializedName("type") val type: Int,
     @SerializedName("id") val id: Int,
     @SerializedName("country") val country: String,

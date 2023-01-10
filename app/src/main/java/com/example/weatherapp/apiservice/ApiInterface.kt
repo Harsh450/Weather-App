@@ -1,23 +1,21 @@
 package com.example.weatherapp.apiservice
 
-import com.example.weatherapp.model.ModelClass
-import retrofit2.Call
+import com.example.weatherapp.model.AllDataModelClass
 import retrofit2.http.GET
 import retrofit2.http.Query
 
 interface ApiInterface {
 
     @GET("weather")
-    fun getCurrentWeatherData(
+    suspend fun getCurrentWeatherData(
         @Query("lat") latitude: String,
         @Query("lon") longitude: String,
         @Query("APPID") api_key: String,
-    ) : Call<ModelClass>
-
+    ) : AllDataModelClass
 
     @GET("weather")
-    fun getCityWeatherData(
+    suspend fun getCityWeatherData(
         @Query("q") cityName: String,
         @Query("APPID") api_key: String,
-    ) : Call<ModelClass>
+    ) : AllDataModelClass
 }

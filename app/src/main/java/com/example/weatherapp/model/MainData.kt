@@ -2,7 +2,7 @@ package com.example.weatherapp.model
 
 import com.google.gson.annotations.SerializedName
 
-data class Main(
+data class MainData(
     @SerializedName("temp") val temp: Double,
     @SerializedName("feels_like") val feels_like: Double,
     @SerializedName("temp_min") val temp_min: Double,
